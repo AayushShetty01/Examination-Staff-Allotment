@@ -1,10 +1,11 @@
 <?php
 	session_start();
+require_once __DIR__ . '/db.php';
 	if ($_SESSION['first_name'] === null || $_SESSION['last_name'] === null || $_SESSION['email'] === null) {
 		header("Location: ../login_and_register/index.php");
 	}
 
-	$db = new mysqli('localhost', 'root', '', 'esas') 
+	$db = db() 
 				or die("Error connecting to database!");
 
 	if ($_SERVER['REQUEST_METHOD'] == 'POST') {
@@ -22,27 +23,25 @@
 			$db_end_time = date('H:i:s', strtotime($end_time));
 			$db_held_on = date("Y-m-d",strtotime($held_on));
 
-			$sql = "UPDATE exam SET "
-							."course_name = '$course_name', "
-							."held_on = '$db_held_on', "
-							."start_time = '$db_start_time', "
-							."end_time = '$db_end_time', "
-							."room_no = '$room_no' "
-							."WHERE _id = '$_id'";
+			$stmt = $db->prepare('UPDATE exam SET course_name = ?, held_on = ?, start_time = ?, end_time = ?, room_no = ? WHERE _id = ?');
+			$stmt->bind_param('ssssii', $course_name, $db_held_on, $db_start_time, $db_end_time, $room_no, $_id);
 
-			if ($db->query($sql)) {
+			if ($stmt->execute()) {
 				header("Location: viewExam.php");
 			} else {
 				// $update_id = $_id;
-				$sql = "SELECT * from exam where _id = '$_id'";
-				$res = $db->query($sql);
+				$stmt = $db->prepare('SELECT * FROM exam WHERE _id = ?');
+				$stmt->bind_param('i', $_id);
+				$stmt->execute();
+				$res = $stmt->get_result();
 				$row = $res->fetch_assoc();
 				// print_r($row);
 			}
 		} else {
 			$_id = $_POST['update_id'];
 
-			$sql = "SELECT * from exam where _id = '$_id'";
+			$stmt = $db->prepare('SELECT * FROM exam WHERE _id = ?');
+			$stmt->bind_param('i', $_id);
 
 			$res = $db->query($sql);
 			$row = $res->fetch_assoc();
