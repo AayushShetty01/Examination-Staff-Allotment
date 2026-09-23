@@ -1,10 +1,11 @@
 <?php
 	session_start();
+require_once __DIR__ . '/db.php';
 	if ($_SESSION['first_name'] === null || $_SESSION['last_name'] === null || $_SESSION['email'] === null) {
 		header("Location: ../login_and_register/index.php");
 	}
 
-	$db = new mysqli('localhost', 'root', '', 'esas') 
+	$db = db() 
 				or die("Error connecting to database!");
 	
 	if ($_SERVER['REQUEST_METHOD'] == 'POST') {
