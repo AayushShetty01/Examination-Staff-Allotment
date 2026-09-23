@@ -1,81 +1,91 @@
 <?php
-  // session
-  session_start();
+declare(strict_types=1);
 
-  if (isset($_SESSION['first_name']) && isset($_SESSION['last_name']) && isset($_SESSION['email'])) {
-    header("Location: ../home/index.php");
-  }
+session_start();
+require_once __DIR__ . '/db.php';
+$db = db();
 
-  $_SESSION['login_message'] = '';
-  $_SESSION['register_message'] = '';
+if (isset($_SESSION['first_name'], $_SESSION['last_name'], $_SESSION['email'])) {
+    header('Location: ../home/index.php');
+    exit;
+}
 
-  // database
-  $db = new mysqli('localhost', 'root', '', 'esas') 
-    or die("Error connecting to database!");
-  if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if ($_POST['submit'] === 'register') {
-      if(isset($_POST['first_name']) && isset($_POST['last_name']) && isset($_POST['email']) 
-        && isset($_POST['password']) && isset($_POST['cpassword'])) {
-          // $_SESSION['register_message'] = '*works!';
-          
-          $first_name = mysqli_real_escape_string($db, $_POST['first_name']);
-          $last_name = mysqli_real_escape_string($db, $_POST['last_name']);
-          $email = mysqli_real_escape_string($db, $_POST['email']);
-          $password = mysqli_real_escape_string($db, $_POST['password']);
-          $cpassword = mysqli_real_escape_string($db, $_POST['cpassword']);
+$_SESSION['login_message'] = '';
+$_SESSION['register_message'] = '';
 
-          if (trim($first_name) === '' || trim($last_name) === '' || trim($email) === ''
-            || strlen($password) == 0 || strlen($cpassword) == 0) {
-            $_SESSION['register_message'] = '*enter all fields!';
-          } else {
-            if ($password === $cpassword) {
-              $md5_2 = md5(md5($password));
-              $sql = "INSERT into users (first_name, last_name, email, password)"
-                ."VALUES ('$first_name', '$last_name', '$email', '$md5_2')";
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['submit'] ?? '';
 
-              if ($db->query($sql)) {
-                $_SESSION['first_name'] = $first_name;
-                $_SESSION['last_name'] = $last_name;
-                $_SESSION['email'] = $email;
-                header("Location: ../home/index.php");
-              } else {
-                $_SESSION['register_message'] = '*error querying database';
-              }
-            } else {
-              $_SESSION['register_message'] = '*passwords do not match';
-            }
-          }
+    if ($action === 'register') {
+        $firstName = trim($_POST['first_name'] ?? '');
+        $lastName = trim($_POST['last_name'] ?? '');
+        $email = trim($_POST['email'] ?? '');
+        $password = (string)($_POST['password'] ?? '');
+        $confirmPassword = (string)($_POST['cpassword'] ?? '');
+
+        if ($firstName === '' || $lastName === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $_SESSION['register_message'] = '*Enter valid details in all fields.';
+        } elseif (strlen($password) < 8) {
+            $_SESSION['register_message'] = '*Password must contain at least 8 characters.';
+        } elseif ($password !== $confirmPassword) {
+            $_SESSION['register_message'] = '*Passwords do not match.';
         } else {
-          $_SESSION['register_message'] = '*enter all fields!';
+            $check = $db->prepare('SELECT _id FROM users WHERE email = ? LIMIT 1');
+            $check->bind_param('s', $email);
+            $check->execute();
+
+            if ($check->get_result()->num_rows > 0) {
+                $_SESSION['register_message'] = '*An account with this email already exists.';
+            } else {
+                $hash = password_hash($password, PASSWORD_DEFAULT);
+                $stmt = $db->prepare('INSERT INTO users (first_name, last_name, email, password) VALUES (?, ?, ?, ?)');
+                $stmt->bind_param('ssss', $firstName, $lastName, $email, $hash);
+                $stmt->execute();
+
+                session_regenerate_id(true);
+                $_SESSION['first_name'] = $firstName;
+                $_SESSION['last_name'] = $lastName;
+                $_SESSION['email'] = $email;
+                header('Location: ../home/index.php');
+                exit;
+            }
         }
-    } else if ($_POST['submit'] === 'login') {
-      // $_SESSION['login_message'] = '*works';
-      if(isset($_POST['email']) && isset($_POST['password'])) {
-        // $_SESSION['login_message'] = '*works!';
-        $email = mysqli_real_escape_string($db, $_POST['email']);
-        $password = mysqli_real_escape_string($db, $_POST['password']);
+    } elseif ($action === 'login') {
+        $email = trim($_POST['email'] ?? '');
+        $password = (string)($_POST['password'] ?? '');
 
-        $sql = "SELECT * from users WHERE email = '$email'";
-        $result = $db->query($sql);
+        $stmt = $db->prepare('SELECT _id, first_name, last_name, email, password FROM users WHERE email = ? LIMIT 1');
+        $stmt->bind_param('s', $email);
+        $stmt->execute();
+        $user = $stmt->get_result()->fetch_assoc();
 
-        if ($user = $result->fetch_assoc()) {
-          if (md5(md5($password)) === $user['password']) {
+        $valid = false;
+        if ($user) {
+            $valid = password_verify($password, $user['password']);
+            // Upgrade legacy double-MD5 records the first time the user logs in.
+            if (!$valid && hash_equals((string)$user['password'], md5(md5($password)))) {
+                $valid = true;
+                $hash = password_hash($password, PASSWORD_DEFAULT);
+                $upgrade = $db->prepare('UPDATE users SET password = ? WHERE _id = ?');
+                $upgrade->bind_param('si', $hash, $user['_id']);
+                $upgrade->execute();
+            }
+        }
+
+        if ($valid) {
+            session_regenerate_id(true);
             $_SESSION['first_name'] = $user['first_name'];
             $_SESSION['last_name'] = $user['last_name'];
             $_SESSION['email'] = $user['email'];
-            header("Location: ../home/index.php");
-          } else {
-            $_SESSION['login_message'] = '*Invlaid email or password!';
-          }
-        } else {
-          $_SESSION['login_message'] = '*Invalid email or password!';
+            header('Location: ../home/index.php');
+            exit;
         }
-      } else {
-        $_SESSION['login_message'] = '*enter all fields!';
-      }
+
+        $_SESSION['login_message'] = '*Invalid email or password.';
     }
-  }
+}
 ?>
+
 
 <html>
 
