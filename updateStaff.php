@@ -1,10 +1,11 @@
 <?php
 	session_start();
+require_once __DIR__ . '/db.php';
 	if ($_SESSION['first_name'] === null || $_SESSION['last_name'] === null || $_SESSION['email'] === null) {
 		header("Location: ../login_and_register/index.php");
 	}
 
-	$db = new mysqli('localhost', 'root', '', 'esas') 
+	$db = db() 
 				or die("Error connecting to database!");
 	
 	if ($_SERVER['REQUEST_METHOD'] == 'POST') {
@@ -39,25 +40,22 @@
 					break;
 			}
 
-			$sql = "UPDATE staff SET "
-							."firstname = '$firstname', "
-							."lastname = '$lastname', "
-							."email = '$email', "
-							."position = '$position', "
-							."noa = '$noa', "
-							."available = '$available' "
-							."WHERE _id = '$_id'";
+			$stmt = $db->prepare('UPDATE staff SET firstname = ?, lastname = ?, email = ?, position = ?, noa = ?, available = ? WHERE _id = ?');
+			$stmt->bind_param('ssssiii', $firstname, $lastname, $email, $position, $noa, $available, $_id);
 
-			if ($db->query($sql)) {
+			if ($stmt->execute()) {
 				header("Location: viewStaff.php");
 			} else {
-				$sql = "SELECT * from staff where _id = '$_id'";
-				$res = $db->query($sql);
+				$stmt = $db->prepare('SELECT * FROM staff WHERE _id = ?');
+				$stmt->bind_param('i', $_id);
+				$stmt->execute();
+				$res = $stmt->get_result();
 				$row = $res->fetch_assoc();
 			}
 		} else {
 			$_id = $_POST['update_id'];
-			$sql = "SELECT * from staff where _id = '$_id'";
+			$stmt = $db->prepare('SELECT * FROM staff WHERE _id = ?');
+			$stmt->bind_param('i', $_id);
 			$res = $db->query($sql);
 			$row = $res->fetch_assoc();
 		}
